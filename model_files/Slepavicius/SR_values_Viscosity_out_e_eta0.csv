@@ -1,0 +1,2 @@
+AARD,MSE,MAE,seed,SR output,Equation
+11.872521210804452,3.377655276207768,1.3635359406321172,87961,"mul(add(log(alpha), exp(rho)), div(exp(rho), sub(T, 0.405)))",eta_0*(e**rho*(e**rho + log(alpha))/(T - 0.405))

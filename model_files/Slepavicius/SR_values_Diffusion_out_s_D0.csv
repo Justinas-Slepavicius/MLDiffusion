@@ -1,0 +1,2 @@
+AARD,MSE,MAE,seed,SR output,Equation
+2.4554938479555797,0.0003169694021471857,0.014727025185835166,31158,"sqrt(mul(sub(0.664, mul(rho, rho)), sqrt(mul(0.667, T))))",D_0*((2*T/3)**0.25*Abs(rho**2 - 0.664)**0.5)

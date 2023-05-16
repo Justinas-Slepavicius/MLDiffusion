@@ -1,0 +1,2 @@
+AARD,MSE,MAE,seed,SR output,Equation
+4.315041194056396,0.00020103575824853833,0.011091456597577945,64123,"div(add(div(T, exp(alpha)), add(T, -0.694)), mul(exp(rho), sqrt(alpha)))",D_0*(e**(-rho)*(T - 0.694 + e**(-alpha)*T)*Abs(alpha)**(-0.5))

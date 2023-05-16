@@ -1,0 +1,2 @@
+AARD,MSE,MAE,seed,SR output,Equation
+5.225012049050227,0.02466027324771613,0.09544838074105788,56160,"mul(mul(0.892, rho), add(div(div(mul(rho, alpha), add(-0.381, T)), T), alpha))",0.892*rho*(alpha + alpha*rho/(T*(T - 0.381)))

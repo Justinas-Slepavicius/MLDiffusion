@@ -1,0 +1,2 @@
+AARD,MSE,MAE,seed,SR output,Equation
+5.5890275685432185,0.0013311726329218506,0.027725176367422933,28290,"exp(sub(mul(sqrt(mul(log(log(rho)), sub(0.455, rho))), -0.495), div(rho, T)))",D_0*Abs(log(rho))**(-0.273)*e**(-rho/T)
