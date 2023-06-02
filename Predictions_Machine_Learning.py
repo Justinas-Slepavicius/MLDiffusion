@@ -10,7 +10,7 @@ from ML_functions import *
 
 plt.rcParams['text.usetex'] = True
 
-# python .py state D0 plot predict_file predict
+# python .py state CE plot predict_file predict
 
 # if plot is set to 1, a parity plot will be produced in plots/
 # if predict_file is set to 1, user can input a file location from the ML_models folder to use
@@ -20,10 +20,10 @@ state=""
 if len(sys.argv)>1:state=sys.argv[1]
 while len(state)<1: state=input("What state? ")
 
-with_D0=""
-if len(sys.argv)>2:with_D0=sys.argv[2]
-while len(with_D0)<1:with_D0=input("With D0? ")
-with_D0=int(with_D0)
+with_CE=""
+if len(sys.argv)>2:with_CE=sys.argv[2]
+while len(with_CE)<1:with_CE=input("With CE regularisation? ")
+with_CE=int(with_CE)
 
 plot=0
 if len(sys.argv)>3:plot=int(sys.argv[3])
@@ -40,11 +40,11 @@ if len(sys.argv)>5:predict=int(sys.argv[5])
 additional_folder=input_file['Model_Folder']
 if len(additional_folder)>0: additional_folder+='/'
 
-X,y,X_scaler,y_scaler,state,y_out=get_ML_data(state,with_D0)
+X,y,X_scaler,y_scaler,state,y_out=get_ML_data(state,with_CE)
 
 if len(y_out)>1:y_out=["Dual"]
 Suffix=f"{y_out[0].split('_')[0]}_out_{state}"
-if with_D0:
+if with_CE:
     if state=='e':
         Suffix+="_eta0"
     else:
@@ -60,20 +60,20 @@ if plot or predict_file:
             ML_vals=[]
             if model=='SR':
                 for type in state:
-                    ML_vals.append(predict_new_file(f'data/{all_phase_files[type]}.csv',X_scaler,y_scaler,all_models[i],model,state,with_D0))
+                    ML_vals.append(predict_new_file(f'data/{all_phase_files[type]}.csv',X_scaler,y_scaler,all_models[i],model,state,with_CE))
                 ML_vals_arr=pd.concat(ML_vals)
                 train,test = train_test_split(ML_vals_arr, test_size=0.2, random_state=2020)
                 train.to_csv(f'data_out/{model}_{Suffix}_train.csv',index=False)
                 test.to_csv(f'data_out/{model}_{Suffix}_test.csv',index=False)
             else:
                 for type in state:
-                    ML_vals.append(predict_new_file(f'data/{all_phase_files[type]}.csv',X_scaler,y_scaler,all_models[i],model,state,with_D0))
+                    ML_vals.append(predict_new_file(f'data/{all_phase_files[type]}.csv',X_scaler,y_scaler,all_models[i],model,state,with_CE))
                 pd.concat(ML_vals).to_csv(f'data_out/{model}_{Suffix}.csv',index=False)
             col_names=ML_vals[-1].columns
             ML_vals=np.transpose(np.concatenate(ML_vals)).tolist()
         else:
             Suffix_extra=f"_{(File_to_predict.split('/')[-1]).split('.')[-2]}" #adds the name of the newly predicted file to the suffix
-            ML_vals=predict_new_file(File_to_predict,X_scaler,y_scaler,all_models[i],model,state,with_D0)
+            ML_vals=predict_new_file(File_to_predict,X_scaler,y_scaler,all_models[i],model,state,with_CE)
             col_names=ML_vals.columns
             ML_vals=np.transpose(ML_vals.to_numpy()).tolist()
 
@@ -137,5 +137,5 @@ while predict:
     Suffix_extra=""
     ML_vals=[]
     for i,model in enumerate(all_model_names):  
-        ML_out=predict_diff_values(X_input,[0],X_scaler,y_scaler,all_models[i],model,state,with_D0)
+        ML_out=predict_diff_values(X_input,[0],X_scaler,y_scaler,all_models[i],model,state,with_CE)
         print(f'{model} Prediciton: {ML_out.to_numpy()[-1][-1]:0.4f}')

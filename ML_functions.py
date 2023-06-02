@@ -26,15 +26,15 @@ def mean_absolute_percentage_error(x_th,x_pr):
     return np.mean([100*abs(1-(x_pr[i]/x_th[i])) for i in range(len(x_th))])
 
 #calculates D0 or eta0 if required
-def calc_D0(T,d,state):
+def calc_CE(T,d,state):
     if state=='e':
-        D0=(5/16)*(T/math.pi)**(1/2)
+        CE=(5/16)*(T/math.pi)**(1/2)
     else:
-        D0=(3/(8*d))*(T/math.pi)**(1/2)
-    return D0
+        CE=(3/(8*d))*(T/math.pi)**(1/2)
+    return CE
 
 #prepares data for use in ML
-def get_ML_data(state,with_D0):
+def get_ML_data(state,with_CE):
     data_s = pd.read_csv('data/Super_critical.csv')
     data_v = pd.read_csv('data/Vapour.csv')
     data_l = pd.read_csv('data/Liquid.csv')
@@ -42,27 +42,19 @@ def get_ML_data(state,with_D0):
     new_state=""
 
     data=[]
-    if "s" in state:
-        data.append(data_s)
-        new_state+="s"
-    if "l" in state:
-        data.append(data_l)
-        new_state+="l"
-    if "v" in state:
-        data.append(data_v)
-        new_state+="v"
     if "e" in state:
         data=[data_e]
         new_state="e"
-    if "d" in state:
-        data_l['Viscosity']=data_e['Viscosity'].values
-        data=[data_l]
-        new_state="d"
-    if "c" in state:
-        data_l['Viscosity']=data_e['Viscosity'].values
-        data=[data_l]
-        new_state="c"
-
+    else:
+        if "s" in state:
+            data.append(data_s)
+            new_state+="s"
+        if "l" in state:
+            data.append(data_l)
+            new_state+="l"
+        if "v" in state:
+            data.append(data_v)
+            new_state+="v"
 
     state=new_state
 
@@ -74,7 +66,6 @@ def get_ML_data(state,with_D0):
     y_out=['Diffusion_Coefficient']
 
     if state=='e': y_out=['Viscosity']
-    if state in'd': y_out.append('Viscosity')
 
     col_vals=y_out
     if 'Diffusion_Coefficient_Error' in data.columns: data=data.drop(columns=['Diffusion_Coefficient_Error'])
@@ -85,11 +76,12 @@ def get_ML_data(state,with_D0):
     #scales and prepares the data for using in ML
     X = data.drop(columns=col_vals)
     y = data[col_vals].values.tolist()
-    if with_D0:
+    if with_CE:
         for i in range(len(y)):
-            D0=calc_D0(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
-            y[i][0]/=D0
-    if not with_D0: y = np.log(y)
+            CE=calc_CE(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
+            y[i][0]/=CE
+    else:
+        y = np.log(y)
     if len(col_vals)==1:y=np.array(y).reshape(-1,1)
         
     X_scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
@@ -174,10 +166,6 @@ def write_output_data(X,y,y_pred,ML_type,Suffix):
         y_names=['Viscosity']
         y=[y]
         y_pred=[y_pred]
-    elif state=='d':
-        y_names=['Diffusion','Viscosity']
-        y=np.transpose(y)
-        y_pred=np.transpose(y_pred)
     else:
         y_names=['Diffusion']
         y=[y]
@@ -192,23 +180,21 @@ def write_output_data(X,y,y_pred,ML_type,Suffix):
     return
 
 #returns rescaled y output
-def return_y(y,y_scaler,with_D0):
-    if np.shape(y)[0]==1:
-        y = np.ravel(y_scaler.inverse_transform(y))
-        if not with_D0:
-            y = np.exp(y)
-    else:
-        y = np.exp(y_scaler.inverse_transform(y))
+def return_y(y,y_scaler,with_CE):
+    y = np.ravel(y_scaler.inverse_transform(y))
+    if not with_CE:
+        y = np.exp(y)
     return y
 
 #performs the ANN algorithm
-def do_ANN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix):
+def do_ANN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, with_CE, Suffix):
     print("\nANN\n",flush=True)
+    X_test_scaled=X_scaler.inverse_transform(X_test)
     ML_model="ANN"
-    for num_epochs in [3]: # log10 of the number of epochs to run
+    for num_epochs in [4]: # log10 of the number of epochs to run
         for n_layers in [28]: #number of hidden layers
             any_good=[100,100,100] #value holder for ANN erformance metrics
-            for iteration in range(1000):
+            for iteration in range(100):
                 model = MLPRegressor(max_iter=10**num_epochs,
                                     activation="relu",
                                     hidden_layer_sizes=(n_layers),
@@ -218,20 +204,30 @@ def do_ANN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix):
                     scores=cross_val_score(model,X_train,y_train, cv=10, scoring="neg_mean_squared_error")
                     print(f"CV10 performance: Mean MSE - {-1*np.mean(scores)}+{np.std(scores)}",flush=True) #Checks the cross validation of the first ANN algorithm
                 model.fit(X_train,y_train)
-                predictions = return_y(model.predict(X_test),y_scaler)
+                predictions = return_y([model.predict(X_test)],y_scaler,with_CE)
 
+                if with_CE:
+                    state=Suffix.split('_')[-2]
+                else:
+                    state=Suffix.split('_')[-1]
+                if with_CE:
+                    for i in range(len(predictions)):
+                        CE=calc_CE(X_test_scaled[i][0],X_test_scaled[i][1],state)
+                        predictions[i]*=CE
+                
                 score = [mean_absolute_percentage_error(y_test, predictions), mean_squared_error(y_test, predictions), mean_absolute_error(y_test, predictions)]
                 if (score[0]< any_good[0]) or iteration==0:
                     best_model=model #records the best performing model score
                     any_good=score
             print(f"Model testing performance:  AARD - {score[0]}, MSE - {score[1]}, MAE - {score[2]}",flush=True) #prints testing performance
             dump(model, f"model_files/ANN_model_{n_layers}_{Suffix}.joblib") #dumps the best model
-            write_output_data(X_scaler.inverse_transform(X_test),y_test,return_y(best_model.predict(X_test),y_scaler),ML_model,f"{Suffix}") #Makes output file
+            write_output_data(X_scaler.inverse_transform(X_test),y_test,return_y([best_model.predict(X_test)],y_scaler,with_CE),ML_model,f"{Suffix}") #Makes output file
  
 #performs the KNN algorithm
-def do_KNN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix):
+def do_KNN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, with_CE, Suffix):
     print("\nKNN\n",flush=True)
     ML_model="KNN"
+    X_test_scaled=X_scaler.inverse_transform(X_test)
     #KNN is purely deterministic, so additional repeats are not necessary
     model = KNN(n_neighbors=4,
                 weights='distance',
@@ -239,13 +235,22 @@ def do_KNN(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix):
     scores=cross_val_score(model,X_train,y_train, cv=10, scoring="neg_mean_squared_error") #Checks the cross validation of the KNN algorithm
     print(f"CV10 performance: Mean MSE - {-1*np.mean(scores)}+{np.std(scores)}",flush=True)
     model.fit(X_train,y_train)
-    predictions = return_y(model.predict(X_test),y_scaler)
+    predictions = return_y([model.predict(X_test)],y_scaler, with_CE)
+
+    if with_CE:
+        state=Suffix.split('_')[-2]
+    else:
+        state=Suffix.split('_')[-1]
+    if with_CE:
+        for i in range(len(predictions)):
+            CE=calc_CE(X_test_scaled[i][0],X_test_scaled[i][1],state)
+            predictions[i]*=CE
 
     dump(model, f"model_files/KNN_model_{Suffix}.joblib") #dumps the model
     score = [mean_absolute_percentage_error(y_test, predictions), mean_squared_error(y_test, predictions), mean_absolute_error(y_test, predictions)]
     print(f"Model testing performance:  AARD - {score[0]}, MSE - {score[1]}, MAE - {score[2]}",flush=True) #prints testing performance
 
-    write_output_data(X_scaler.inverse_transform(X_test),y_test,return_y(model.predict(X_test),y_scaler),ML_model,f"{Suffix}") #Makes output file
+    write_output_data(X_scaler.inverse_transform(X_test),y_test,return_y([model.predict(X_test)],y_scaler,with_CE),ML_model,f"{Suffix}") #Makes output file
 
 #performs the SR algorithm
 def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_args=[]):
@@ -272,17 +277,14 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
     if len(input_args)>0:n_repeats=input_args[0]
     n_repeats=int(n_repeats)
 
-    if len(input_args)<2:with_D0=input("With D0? ")
-    if len(input_args)>1:with_D0=input_args[1]
-    if with_D0 in ["1"]:with_D0=int(with_D0)
+    if len(input_args)<2:with_CE=input("With CE regularisation? ")
+    if len(input_args)>1:with_CE=input_args[1]
+    if with_CE in ["1"]:with_CE=int(with_CE)
 
-    state=Suffix[-1] #checks if D0 or eta0
-
-    if with_D0:
-        if state=='e':
-            Suffix+="_eta0"
-        else:
-            Suffix+="_D0"
+    if with_CE:
+        state=Suffix.split('_')[-2]
+    else:
+        state=Suffix.split('_')[-1]
 
     print(Suffix,flush=True) #prints the Suffix, helps ensure that eta0 or D0 were passed/not passed.
 
@@ -298,16 +300,9 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
     
     X_train=X_scaler.inverse_transform(X_train)
     X_test=X_scaler.inverse_transform(X_test)
-    y_train=np.exp(np.ravel(y_scaler.inverse_transform(y_train.reshape(1,-1))))
-
-    if with_D0:
-        for i in range(len(y_train)):
-            D0=calc_D0(X_train[i][0],X_train[i][1],state)
-            y_train[i]/=D0
-        for i in range(len(y_test)):
-            D0=calc_D0(X_test[i][0],X_test[i][1],state)
-            y_test[i]/=D0
-
+    y_train=np.ravel(y_scaler.inverse_transform(y_train.reshape(1,-1)))
+    if not with_CE:
+        y_train=np.exp(y_train)
 
     feature_names=["T","rho","alpha"]
 
@@ -317,8 +312,7 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
         random_number=randint(0,10**5)
         model = SymbolicRegressor(
                         population_size=5000,
-                        # generations=50,
-                        generations=5,
+                        generations=50,
                         function_set=set_of_functions,
                         metric=mape,
                         parsimony_coefficient=0.3,
@@ -333,6 +327,10 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
                         )
         model.fit(X_train,y_train)
         predictions = model.predict(X_test)
+        if with_CE:
+            for i in range(len(predictions)):
+                CE=calc_CE(X_test[i][0],X_test[i][1],state)
+                predictions[i]*=CE
 
         # dump(model, f"model_files/SR_model_{Suffix}.joblib") #dumps the model. Commented out, as the full equation is saved
         score = [mean_absolute_percentage_error(y_test, predictions), mean_squared_error(y_test, predictions), mean_absolute_error(y_test, predictions)]
@@ -350,7 +348,7 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
          'log': lambda x    : sympy.log(abs(x))
         }
         string=sympy.sympify(f"{model._program}", locals=converter)
-        if with_D0:
+        if with_CE:
             if state=='e':
                 string=f"$\eta$_0*({string})"
             else:
@@ -368,13 +366,13 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
             
     col_vals=col_vals.sort_values(by=['AARD']) # sorts all equations by AARD
     col_vals.to_csv(FileName, index=False) # saves all equations
-    if with_D0:
+    if with_CE:
         for i in range(len(y_test)):
-            D0=calc_D0(X_test[i][0],X_test[i][1],state)
-            y_test[i]*=D0
+            CE=calc_CE(X_test[i][0],X_test[i][1],state)
+            y_test[i]*=CE
     write_output_data(X_test,y_test,sub_eq(X_test,col_vals['Equation'][0]),ML_model,f"{Suffix}") #Makes output file for the best performing overall equation
  
-def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name,state,with_D0):
+def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name,state,with_CE):
     temp_lim=[0.45,1.5]
     dens_lim=[0.005,0.85]
 
@@ -392,8 +390,8 @@ def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name,state,wi
         test_data=File_In['Diffusion Coefficient'].to_numpy().copy()
     test_og=test_data.copy()
     for i in range(len(test_data)):
-        D0=calc_D0(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
-        test_data[i]/=D0
+        CE=calc_CE(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
+        test_data[i]/=CE
     
     X=X_scaler.transform(X)
     if state=='e':
@@ -401,17 +399,17 @@ def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name,state,wi
     else:
         y=File_In['Diffusion Coefficient'].to_numpy()
       
-    return predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_D0)
+    return predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_CE)
 
-def predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_D0):    
+def predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_CE):    
     if model_name!='SR':
         prediction=[model.predict(X)] #predict with ANN or KNN
-        prediction=return_y(prediction,y_scaler,with_D0)
+        prediction=return_y(prediction,y_scaler,with_CE)
         X=X_scaler.inverse_transform(X)
-        if with_D0:
+        if with_CE:
             for i in range(len(prediction)):
-                D0=calc_D0(X[i][0],X[i][1],state)
-                prediction[i]*=D0
+                CE=calc_CE(X[i][0],X[i][1],state)
+                prediction[i]*=CE
     else:
         X=X_scaler.inverse_transform(X)
         prediction=sub_eq(X,model['Equation'][0]) #predict with SR
