@@ -1,6 +1,6 @@
 # MLDiffusion
 In the root directory the folders "data_out" and "plots" are required.
-Libraries of _scikit_ 1.2.2 and _gplearn_ 0.4.2 are used
+Libraries of _scikit_ 1.2.2 and _gplearn_ 0.4.2 are used.
 
 To train a new model run **Model_Machine_Learning.py**, with the following user inputs:
 - **ML type** - any ML types required can be named from ANN,KNN and SR in any order or comvination, e.g. ANN, ANNKNN, KNNSR etc.
