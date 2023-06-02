@@ -69,8 +69,6 @@ if plot or predict_file:
                 for type in state:
                     ML_vals.append(predict_new_file(f'data/{all_phase_files[type]}.csv',X_scaler,y_scaler,all_models[i],model,state,with_D0))
                 pd.concat(ML_vals).to_csv(f'data_out/{model}_{Suffix}.csv',index=False)
-            if 's' in state:
-                ML_vals.append(predict_new_file(f'data/Heat_Map_Data.csv',X_scaler,y_scaler,all_models[i],model,state,with_D0))
             col_names=ML_vals[-1].columns
             ML_vals=np.transpose(np.concatenate(ML_vals)).tolist()
         else:
