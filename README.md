@@ -7,7 +7,7 @@ To train a new model run **Model_Machine_Learning.py**, with the following user 
 - **state** and type of ML done - choose which properties to predict.
   - v,l,s in any order or combination, can predict the diffusion coefficient of vapour, liquid and super critical phases
   - e predicts liquid viscosity
-- *SR Only* how many times to repeat the SR algorithm (if SR not used - use any number)
+- **Number of SR Loops (_SR Only_)** how many times to repeat the SR algorithm (if SR not used - use any number)
 - **Regularize CE** for D or $\eta$ with Chapman-Eskogg equations (0 - false/1 -true)
 - example submit command **python Model_Machine_Learning.py ANNKNNSR slv 0 1**
 
