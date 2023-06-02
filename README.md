@@ -4,7 +4,7 @@ Libraries of _scikit_ 1.2.2 and _gplearn_ 0.4.2 are used.
 
 To train a new model run **Model_Machine_Learning.py**, with the following user inputs:
 - **ML type** - any ML types required can be named from ANN,KNN and SR in any order or comvination, e.g. ANN, ANNKNN, KNNSR etc.
-- **state** and type of ML done - choose which properties to predict.
+- **State** and type of ML done - choose which properties to predict.
   - v,l,s in any order or combination, can predict the diffusion coefficient of vapour, liquid and super critical phases
   - e predicts liquid viscosity
 - **Number of SR Loops (_SR Only_)** how many times to repeat the SR algorithm (if SR not used - use any number)
@@ -12,7 +12,7 @@ To train a new model run **Model_Machine_Learning.py**, with the following user 
 - example submit command **python Model_Machine_Learning.py ANNKNNSR slv 0 1**
 
 To use a pretrained model - run **Predictions_Machine_Learning.py**, with the following user inputs:
-- **state** and type of ML done - choose which properties to use.
+- **State** and type of ML done - choose which properties to use.
   - v,l,s in any order or combination, can predict the diffusion coefficient of vapour, liquid and super critical phases
   - e predicts liquid viscosity
 - **Regularize CE** for D or $\eta$ with Chapman-Eskogg equations (0 - false/1 -true)
