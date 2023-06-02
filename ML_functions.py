@@ -13,8 +13,13 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from joblib import dump, load
 from sklearn.model_selection import cross_val_score
 import os
+import sys
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from scipy.ndimage import gaussian_filter
 
 np.random.seed(2022)
+np.set_printoptions(threshold=sys.maxsize)
 
 #caculates the AARD
 def mean_absolute_percentage_error(x_th,x_pr):
@@ -29,7 +34,7 @@ def calc_D0(T,d,state):
     return D0
 
 #prepares data for use in ML
-def get_ML_data(state):
+def get_ML_data(state,with_D0):
     data_s = pd.read_csv('data/Super_critical.csv')
     data_v = pd.read_csv('data/Vapour.csv')
     data_l = pd.read_csv('data/Liquid.csv')
@@ -72,15 +77,21 @@ def get_ML_data(state):
     if state in'd': y_out.append('Viscosity')
 
     col_vals=y_out
-
+    if 'Diffusion_Coefficient_Error' in data.columns: data=data.drop(columns=['Diffusion_Coefficient_Error'])
+    
     #removes unnecessary columns from input
     data = data.drop(columns=["Repulsive_Exponent","Attractive_Exponent","Temperature_Critical","Density_Critical"])
 
     #scales and prepares the data for using in ML
     X = data.drop(columns=col_vals)
-    y = data[col_vals]
-    y = np.log(y)
+    y = data[col_vals].values.tolist()
+    if with_D0:
+        for i in range(len(y)):
+            D0=calc_D0(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
+            y[i][0]/=D0
+    if not with_D0: y = np.log(y)
     if len(col_vals)==1:y=np.array(y).reshape(-1,1)
+        
     X_scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
     X = X_scaler.fit_transform(X)
     y_scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
@@ -89,6 +100,36 @@ def get_ML_data(state):
     if len(col_vals)==1:y=np.ravel(y)
 
     return X,y,X_scaler,y_scaler,state,y_out
+
+#prepares the models to use in predictions
+def get_ML_models(additional_folder,Suffix):
+    all_models=[]
+    all_model_names=[]
+
+    try:
+        model_ANN = load(f"model_files/{additional_folder}ANN_model_28_{Suffix}.joblib")
+        all_models.append(model_ANN)
+        all_model_names.append("ANN")
+    except:
+        pass
+    try:
+        model_KNN = load(f"model_files/{additional_folder}KNN_model_{Suffix}.joblib")
+        all_models.append(model_KNN)
+        all_model_names.append("KNN")
+    except:
+        pass
+    try:
+        model_SR  = pd.read_csv(f"model_files/{additional_folder}SR_values_{Suffix}.csv")
+        all_models.append(model_SR)
+        all_model_names.append("SR")
+    except:
+        pass
+    
+    if len(all_model_names)<1:
+        print("No models found")
+        exit()
+    
+    return all_models,all_model_names
 
 #calculates the value of alpha
 def get_alpha(n,m):
@@ -151,10 +192,12 @@ def write_output_data(X,y,y_pred,ML_type,Suffix):
     return
 
 #returns rescaled y output
-def return_y(y,y_scaler):
-    if len(np.shape(y))==1:
-        y = np.exp(np.ravel(y_scaler.inverse_transform([y])))
-    if len(np.shape(y))==2:
+def return_y(y,y_scaler,with_D0):
+    if np.shape(y)[0]==1:
+        y = np.ravel(y_scaler.inverse_transform(y))
+        if not with_D0:
+            y = np.exp(y)
+    else:
         y = np.exp(y_scaler.inverse_transform(y))
     return y
 
@@ -331,24 +374,132 @@ def do_SR(X_train, X_test, y_train, y_test, X_scaler, y_scaler, Suffix, input_ar
             y_test[i]*=D0
     write_output_data(X_test,y_test,sub_eq(X_test,col_vals['Equation'][0]),ML_model,f"{Suffix}") #Makes output file for the best performing overall equation
  
-def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name):
+def predict_new_file(File_to_predict,X_scaler,y_scaler,model,model_name,state,with_D0):
     temp_lim=[0.45,1.5]
     dens_lim=[0.005,0.85]
 
+
     File_In=pd.read_csv(File_to_predict)
+    if 'Diffusion_Coefficient_Errors' in File_In.columns: File_In.drop(columns=['Diffusion_Coefficient_Errors'])
     File_bool = (File_In['Temperature'] > temp_lim[0]) & (File_In['Temperature'] < temp_lim[1]) & (File_In['Density'] > dens_lim[0]) & (File_In['Density'] < dens_lim[1])
     File_In=File_In[File_bool]
-    
+
     X=File_In[['Temperature','Density','Alpha']]
+    if 'Diffusion_Coefficient' in File_In.columns:File_In.rename(columns={'Diffusion_Coefficient': 'Diffusion Coefficient'}, inplace=True)
+    if state=='e':
+        test_data=File_In['Viscosity'].to_numpy().copy()
+    else:
+        test_data=File_In['Diffusion Coefficient'].to_numpy().copy()
+    test_og=test_data.copy()
+    for i in range(len(test_data)):
+        D0=calc_D0(X.values.tolist()[i][0],X.values.tolist()[i][1],state)
+        test_data[i]/=D0
+    
     X=X_scaler.transform(X)
+    if state=='e':
+        y=File_In['Viscosity'].to_numpy()
+    else:
+        y=File_In['Diffusion Coefficient'].to_numpy()
+      
+    return predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_D0)
+
+def predict_diff_values(X,y,X_scaler,y_scaler,model,model_name,state,with_D0):    
     if model_name!='SR':
         prediction=[model.predict(X)] #predict with ANN or KNN
-        prediction=np.exp(np.ravel(y_scaler.inverse_transform(prediction)))
+        prediction=return_y(prediction,y_scaler,with_D0)
         X=X_scaler.inverse_transform(X)
+        if with_D0:
+            for i in range(len(prediction)):
+                D0=calc_D0(X[i][0],X[i][1],state)
+                prediction[i]*=D0
     else:
-        prediction=sub_eq(X_scaler.inverse_transform(X),model['Equation'][0]) #predict with SR
-    X=np.concatenate((X.T,[File_In['Diffusion Coefficient'].to_numpy()],[prediction]))
-    return pd.DataFrame(X.T,columns=['Temperature','Density','alpha','Expermintal Diffusion','Predicted Diffusion'])
+        X=X_scaler.inverse_transform(X)
+        prediction=sub_eq(X,model['Equation'][0]) #predict with SR
     
+
+    X=np.concatenate((X.T,[y],[prediction]))
+
+
+    transport=['Diffusion','Viscosity']
+    tr=0
+    if state=='e':tr=1
     
-    
+    return pd.DataFrame(X.T,columns=['Temperature','Density','alpha',f'Expermintal {transport[tr]}',f'Predicted {transport[tr]}'])
+
+def plot_Heatmap(x,y,errors,model,Suffix,Suffix_extra):
+    Suffix_extra_og=Suffix_extra
+    for con in [9,5,1]:
+        Suffix_extra=f'{Suffix_extra_og}_{con}'
+        num_points=10*con
+        y_mesh, x_mesh = np.meshgrid(np.linspace(min(y), max(y), num_points), np.linspace(min(x), max(x), num_points))
+        z_mesh = 0*x_mesh*y_mesh
+        z_count= 0*x_mesh*y_mesh
+        for x_val,y_val,z_val in zip(x,y,errors):
+            for j in range(0,len(x_mesh)):
+                if x_mesh[j][0]>x_val:
+                    for k in range(0,len(y_mesh[0])):
+                        if y_mesh[0][k]>y_val:
+                            for l in range(-(con//2),(con//2)+1):
+                                for m in range(-(con//2),(con//2)+1):
+                                    if l+j-1>=0 and m+k-1>=0:
+                                        if l+j-1<len(z_mesh) and m+k-1<len(z_mesh[0]):
+                                            z_mesh[l+j-1][m+k-1]+=z_val
+                                            z_count[l+j-1][m+k-1]+=1
+                            break
+                    break
+        for i in range(len(z_mesh)):
+            for j in range(len(z_mesh[i])):
+                if z_count[i][j]!=0:
+                    z_mesh[i][j]/=z_count[i][j]
+                
+        z_mesh=gaussian_filter(z_mesh, sigma=con**3-1,radius=con)
+        # np.savetxt(f'z_mesh_{Suffix_extra}.csv',z_mesh,delimiter=",")
+        # np.savetxt(f'z_count_{Suffix_extra}.csv',z_count,delimiter=",")
+
+        z_min, z_max = 0, np.abs(z_mesh).max()
+
+        fig, ax = plt.subplots()
+
+        c = ax.pcolormesh(x_mesh, y_mesh, z_mesh, cmap='Reds', vmin=z_min, vmax=z_max)
+        text=Suffix_extra.split('_')[1:]
+        ax.set_title(f'Heatmap of {text[0]} for {model} with convolution={text[-1]}')
+        if 'T' in text:
+            ax.set_ylabel(r'$T^*$',size=20)
+            if 'rho' in text:
+                ax.set_xlabel(fr'$\rho^*$',size=20)
+            else:
+                ax.set_xlabel(fr'$\alpha$',size=20)
+        else:
+            ax.set_ylabel(r'$\alpha$',size=20)
+            ax.set_xlabel(r'$\rho}^*$',size=20)
+            
+        ax.axis([x_mesh.min(), x_mesh.max(), y_mesh.min(), y_mesh.max()])
+        cbar=fig.colorbar(c, ax=ax)
+        
+        cbar.ax.get_yaxis().labelpad = 15
+        cbar.ax.set_ylabel(f'{text[0]}', rotation=270)
+
+        fig.savefig(f"plots/{model}_{Suffix}{Suffix_extra}.pdf", bbox_inches='tight')
+        plt.close(fig)
+
+def plot_Heatmap3D(x,y,z,errors,model,Suffix,Suffix_extra):
+    text=Suffix_extra.split('_')[1:]
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    plt.scatter(x,y,zs=z,s=10,c=errors,cmap=mpl.colormaps['hot_r'],linewidths=0.5)
+    color_map = mpl.cm.ScalarMappable(cmap=mpl.cm.hot_r)
+    color_map.set_array(errors)
+    cax = plt.axes([0.9, 0.1, 0.02, 0.8])
+    cbar=plt.colorbar(color_map,cax=cax)
+    cbar.ax.get_yaxis().labelpad = 15
+    cbar.ax.set_ylabel(f'{text[0]}', rotation=270)
+    ax.set_title(f'3D Heatmap of {text[0]} for {model} ')
+    ax.set_xlabel(r'$\rho^*$',size=20)
+    ax.set_ylabel(r'$T^*$',size=20)
+    ax.set_zlabel(r'$\alpha$',size=20)
+    ax.set_xlim(min(x),max(x))
+    ax.set_ylim(min(y),max(y))
+    ax.set_zlim(min(z),max(z))
+
+    fig.savefig(f"plots/{model}_{Suffix}{Suffix_extra}_3D.pdf", bbox_inches='tight')
+    plt.close(fig)
