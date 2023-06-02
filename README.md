@@ -15,7 +15,7 @@ To use a pretrained model - run **Predictions_Machine_Learning.py**, with the fo
 - **state** and type of ML done - choose which properties to use.
   - v,l,s in any order or combination, can predict the diffusion coefficient of vapour, liquid and super critical phases
   - e predicts liquid viscosity
-- **Regularize D or $\eta$** with Chapman-Eskogg equations (0 - false/1 -true)
+- **Regularize D or $\eta$ ** with Chapman-Eskogg equations (0 - false/1 -true)
 - **Plot parity** plots (0 - false/1 -true). The parity plots are of the training files if no predict file is set.
 - **Predict file** containing Mie data (0 - false/1 -true)
 - **Predict input** from a user, with the user being able to input reduced temperature, reduced density and the Mie exponents in the terminal. (0 - false/1 -true)
